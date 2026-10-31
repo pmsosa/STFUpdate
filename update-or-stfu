@@ -1,0 +1,358 @@
+#!/bin/zsh
+# update-or-stfu: scheduled Homebrew updates with a thaw period.
+# Zero dependencies: zsh, awk, launchd and the Xcode Command Line Tools (for the app) only.
+#
+#   update-or-stfu run [--dry-run]   check and upgrade now
+#   update-or-stfu install           copy to ~/.local/bin and load the scheduler LaunchAgent
+#   update-or-stfu app-install       build "Update or STFU.app" (menu bar app) into ~/Applications
+#   update-or-stfu uninstall         remove both agents, the app and the installed script
+#   update-or-stfu status            show tracked pending updates and their age
+#   update-or-stfu now KIND NAME     upgrade one package immediately, ignoring the thaw
+#   update-or-stfu clear KIND NAME   forget a pending/needs-you entry (after a manual upgrade)
+#   update-or-stfu apply-config      rewrite the scheduler plist from the config and reload it
+#   update-or-stfu --version         print the version
+
+emulate -L zsh
+setopt pipe_fail
+
+SELF=${0:A}
+LABEL="com.konukoii.update-or-stfu"
+APP_LABEL="$LABEL.app"
+CONF_DIR="$HOME/.config/update-or-stfu"
+CONF="$CONF_DIR/config"
+STATE_DIR="$HOME/.local/state/update-or-stfu"
+STATE="$STATE_DIR/seen.tsv"          # kind <tab> name <tab> version <tab> first_seen_epoch
+NEEDS_YOU="$STATE_DIR/needs-you.tsv" # same columns; upgrades that failed (usually need sudo) and wait for you
+EVENTS="$STATE_DIR/events.tsv"       # epoch <tab> type <tab> title <tab> body (the app turns these into notifications)
+MAS_COUNT="$STATE_DIR/mas.count"
+LOG="$STATE_DIR/update.log"
+LOCK="$STATE_DIR/lock.d"
+BIN="$HOME/.local/bin/update-or-stfu"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+APP_DIR="$HOME/Applications/Update or STFU.app"
+APP_PLIST="$HOME/Library/LaunchAgents/$APP_LABEL.plist"
+OLD_MB_PLIST="$HOME/Library/LaunchAgents/$LABEL.menubar.plist"
+LEGACY_LABEL="com.user.update-or-stfu"   # pre-1.0 placeholder label; retired on install/uninstall
+VERSION_STR="1.0.0"                      # kept in sync with the VERSION file by build-dmg.sh
+
+# ---- defaults (override in $CONF) -------------------------------------------
+THAW_DAYS=7                              # only install versions Homebrew has offered for >= this many days
+CHECK_EVERY_HOURS=6                      # how often launchd runs the check
+NO_THAW=(docker docker-desktop)          # installed as soon as they appear, no thaw
+SKIP=()                                  # never auto-upgrade these
+DOCKER_SKIP_IF_RUNNING=1                 # defer Docker Desktop while containers are running
+GREEDY_CASKS=1                           # include casks that self-update (needed to catch Docker Desktop)
+USE_MAS=1                                # report pending App Store updates (mas upgrade needs sudo)
+NOTIFY=1                                 # notifications for upgrades and things that need you
+
+[[ -f $CONF ]] && source $CONF
+
+mkdir -p "$STATE_DIR"
+touch "$STATE" "$NEEDS_YOU"
+
+log() { print -r -- "$(date '+%F %T') $*" | tee -a "$LOG" }
+
+# emit TYPE TITLE BODY: queue a notification for the app; fall back to osascript when it isn't installed
+emit() {
+  (( NOTIFY )) || return 0
+  printf '%s\t%s\t%s\t%s\n' "$(date +%s)" "$1" "${2//$'\t'/ }" "${3//$'\t'/ }" >> "$EVENTS"
+  if [[ ! -d $APP_DIR ]]; then
+    local t=${2//\"/\'} b=${3//\"/\'}
+    osascript -e "display notification \"$b\" with title \"$t\"" >/dev/null 2>&1
+  fi
+}
+
+in_list() { # in_list needle item...
+  local n=$1; shift
+  (( ${@[(Ie)$n]} ))
+}
+
+find_brew() {
+  command -v brew >/dev/null 2>&1 && return 0
+  for p in /opt/homebrew/bin /usr/local/bin; do
+    [[ -x $p/brew ]] && { export PATH="$p:$PATH"; return 0 }
+  done
+  return 1
+}
+
+# ---- run --------------------------------------------------------------------
+cmd_run() {
+  local dry=0
+  [[ ${1:-} == --dry-run ]] && dry=1
+
+  find_brew || { log "brew not found"; exit 1 }
+
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    # stale lock (older than 3h) from a crashed run?
+    if [[ -n $(find "$LOCK" -maxdepth 0 -mmin +180 2>/dev/null) ]]; then
+      rmdir "$LOCK" 2>/dev/null && mkdir "$LOCK" || exit 0
+    else
+      log "another run is in progress, exiting"; exit 0
+    fi
+  fi
+  trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+
+  export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1 NONINTERACTIVE=1
+
+  (( dry )) && log "--- dry run (thaw ${THAW_DAYS}d) ---" || log "--- run (thaw ${THAW_DAYS}d) ---"
+  brew update >>"$LOG" 2>&1 || log "brew update failed (continuing with cached index)"
+
+  local now=$(date +%s)
+  local newstate="$STATE.new" newneeds="$NEEDS_YOU.new"
+  : > "$newstate"; : > "$newneeds"
+  local -a upgraded thawing failed deferred waiting
+  local masmsg=""
+
+  local kind line name ver first age
+  for kind in formula cask; do
+    local -a flags=(--$kind --verbose)
+    [[ $kind == cask ]] && (( GREEDY_CASKS )) && flags+=(--greedy)
+
+    while IFS= read -r line; do
+      [[ -z $line ]] && continue
+      name=${line%% *}
+      ver=${line##* }
+
+      if in_list "$name" "${SKIP[@]}"; then
+        log "skip   $name (in SKIP)"; continue
+      fi
+
+      first=$(awk -F'\t' -v k="$kind" -v n="$name" -v v="$ver" \
+        '$1==k && $2==n && $3==v {print $4; exit}' "$STATE")
+      [[ -z $first ]] && first=$now
+      age=$(( (now - first) / 86400 ))
+
+      if ! in_list "$name" "${NO_THAW[@]}" && (( age < THAW_DAYS )); then
+        log "thaw   $name -> $ver (seen ${age}d, need ${THAW_DAYS}d)"
+        thawing+=("$name")
+        print -- "$kind\t$name\t$ver\t$first" >> "$newstate"
+        continue
+      fi
+
+      if in_list "$name" "${NO_THAW[@]}" && [[ $name == docker* ]] \
+         && (( DOCKER_SKIP_IF_RUNNING )) && command -v docker >/dev/null 2>&1 \
+         && [[ -n $(docker ps -q 2>/dev/null) ]]; then
+        log "defer  $name -> $ver (containers running)"
+        deferred+=("$name")
+        print -- "$kind\t$name\t$ver\t$first" >> "$newstate"
+        continue
+      fi
+
+      if (( dry )); then
+        log "would upgrade $name -> $ver (seen ${age}d)"
+        print -- "$kind\t$name\t$ver\t$first" >> "$newstate"
+        continue
+      fi
+
+      # already failed on this exact version: don't retry or re-notify, wait for the user (a newer version retries)
+      if awk -F'\t' -v k="$kind" -v n="$name" -v v="$ver" '$1==k && $2==n && $3==v {f=1} END{exit !f}' "$NEEDS_YOU"; then
+        log "needs-you $name -> $ver (previous upgrade failed)"
+        waiting+=("$name")
+        print -- "$kind\t$name\t$ver\t$first" >> "$newstate"
+        print -- "$kind\t$name\t$ver\t$first" >> "$newneeds"
+        continue
+      fi
+
+      log "upgrade $name -> $ver"
+      if brew upgrade --$kind "$name" >>"$LOG" 2>&1; then
+        upgraded+=("$name")
+      else
+        log "FAILED $name"
+        failed+=("$name")
+        print -- "$kind\t$name\t$ver\t$first" >> "$newstate"
+        print -- "$kind\t$name\t$ver\t$first" >> "$newneeds"
+      fi
+    done < <(brew outdated "${flags[@]}" 2>>"$LOG")
+  done
+
+  # new files hold only still-pending entries, so upgraded/withdrawn versions drop out
+  if (( dry )); then rm -f "$newstate" "$newneeds"
+  else mv "$newstate" "$STATE"; mv "$newneeds" "$NEEDS_YOU"; fi
+
+  if (( USE_MAS )) && command -v mas >/dev/null 2>&1; then
+    local masn=$(mas outdated 2>/dev/null | wc -l | tr -d ' ')
+    (( dry )) || print -- "$masn" > "$MAS_COUNT"
+    (( masn )) && { log "mas: $masn App Store update(s) pending (needs sudo; install from the App Store)"; masmsg="App Store updates pending: $masn. " }
+  fi
+
+  (( ${#upgraded} )) && brew cleanup --prune=30 >>"$LOG" 2>&1
+
+  local msg="$masmsg"
+  (( ${#upgraded} )) && msg+="Updated: ${(j:, :)upgraded}. "
+  (( ${#failed} ))   && msg+="FAILED: ${(j:, :)failed}. "
+  (( ${#deferred} )) && msg+="Deferred: ${(j:, :)deferred}. "
+  (( ${#waiting} ))  && msg+="Needs you: ${(j:, :)waiting}. "
+  (( ${#thawing} ))  && msg+="Thawing: ${#thawing}. "
+  log "done. ${msg:-nothing to do}"
+
+  if (( ! dry )); then
+    (( ${#upgraded} )) && emit updated "Updated ${#upgraded} package$([[ ${#upgraded} == 1 ]] || print s)" "${(j:, :)upgraded}"
+    (( ${#failed} ))   && emit needs_you "${#failed} update$([[ ${#failed} == 1 ]] || print s) need$([[ ${#failed} == 1 ]] && print s) you" "${(j:, :)failed} could not install unattended (usually needs your password). Open the menu to install."
+    (( ${#deferred} )) && emit deferred "Docker update deferred" "Containers are running; will retry on the next check."
+  fi
+}
+
+# ---- status -----------------------------------------------------------------
+cmd_status() {
+  local now=$(date +%s)
+  print "config: THAW_DAYS=$THAW_DAYS NO_THAW=(${NO_THAW[*]}) SKIP=(${SKIP[*]})"
+  print "agent:  $(launchctl print gui/$(id -u)/$LABEL >/dev/null 2>&1 && print loaded || print not loaded)"
+  print "\npending (kind name version age):"
+  awk -F'\t' -v now=$now '{printf "  %-7s %-30s %-16s %dd\n", $1, $2, $3, (now-$4)/86400}' "$STATE"
+  print "\nneeds you:"; awk -F'\t' '{printf "  %s %s %s\n", $1, $2, $3}' "$NEEDS_YOU"
+  print "\nlast log lines:"; tail -n 8 "$LOG" 2>/dev/null
+}
+
+# ---- single-package helpers (used by the app and the Terminal install scripts) ------
+drop_entry() { # drop_entry KIND NAME
+  local f
+  for f in "$STATE" "$NEEDS_YOU"; do
+    awk -F'\t' -v k="$1" -v n="$2" '!($1==k && $2==n)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  done
+}
+
+cmd_now() { # now KIND NAME
+  find_brew || exit 1
+  export HOMEBREW_NO_AUTO_UPDATE=1 NONINTERACTIVE=1
+  log "manual upgrade $2"
+  brew upgrade --$1 "$2" >>"$LOG" 2>&1 || { log "FAILED $2"; emit needs_you "$2 could not install" "Open the menu to install it in Terminal."; exit 1 }
+  drop_entry "$1" "$2"
+  log "manual upgrade $2 done"
+  emit updated "Updated $2" "Installed ahead of the thaw period."
+}
+
+cmd_clear() { drop_entry "$1" "$2"; log "cleared $2"; }
+
+# ---- scheduler agent ----------------------------------------------------------
+write_plist() {
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key><array><string>/bin/zsh</string><string>$BIN</string><string>run</string></array>
+  <key>StartInterval</key><integer>$(( CHECK_EVERY_HOURS * 3600 ))</integer>
+  <key>RunAtLoad</key><true/>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key><string>$STATE_DIR/launchd.out</string>
+  <key>StandardErrorPath</key><string>$STATE_DIR/launchd.err</string>
+</dict></plist>
+EOF
+}
+
+cmd_apply_config() { # rewrite the plist; reload only if the agent is currently loaded (don't un-pause)
+  write_plist
+  if launchctl print gui/$(id -u)/$LABEL >/dev/null 2>&1; then
+    launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null
+    launchctl bootstrap gui/$(id -u) "$PLIST"
+  fi
+}
+
+retire_legacy() {
+  local f
+  for f in "$LEGACY_LABEL" "$LEGACY_LABEL.app" "$LEGACY_LABEL.menubar"; do
+    launchctl bootout gui/$(id -u) "$HOME/Library/LaunchAgents/$f.plist" 2>/dev/null
+    rm -f "$HOME/Library/LaunchAgents/$f.plist"
+  done
+}
+
+cmd_install() {
+  retire_legacy
+  mkdir -p "$HOME/.local/bin" "$CONF_DIR"
+  # launchd can't read ~/Desktop etc. without TCC grants, so run a copy from ~/.local/bin
+  [[ $SELF == $BIN ]] || cp -f "$SELF" "$BIN"; chmod +x "$BIN"
+
+  if [[ ! -f $CONF ]]; then
+    cat > "$CONF" <<EOF
+# update-or-stfu config (sourced by zsh; the app's Settings window rewrites this file)
+THAW_DAYS=$THAW_DAYS
+CHECK_EVERY_HOURS=$CHECK_EVERY_HOURS
+NO_THAW=(docker docker-desktop)
+SKIP=()
+DOCKER_SKIP_IF_RUNNING=1
+GREEDY_CASKS=1
+USE_MAS=1
+NOTIFY=1
+EOF
+    print "wrote $CONF"
+  fi
+
+  write_plist
+  launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null
+  launchctl bootstrap gui/$(id -u) "$PLIST" && print "installed: runs every ${CHECK_EVERY_HOURS}h, first run now"
+}
+
+# ---- the app ------------------------------------------------------------------
+cmd_app_install() {
+  command -v swiftc >/dev/null || { print "swiftc not found (install Xcode Command Line Tools)"; exit 1 }
+  local src="${SELF:h}/app" exe="$APP_DIR/Contents/MacOS/UpdateOrSTFU"
+  [[ -d $src ]] || { print "missing $src"; exit 1 }
+
+  # keep the installed script in sync with this checkout (the app shells out to it)
+  mkdir -p "$HOME/.local/bin" "$CONF_DIR"
+  [[ $SELF == $BIN ]] || cp -f "$SELF" "$BIN"; chmod +x "$BIN"
+
+  retire_legacy
+  launchctl bootout gui/$(id -u) "$APP_PLIST" 2>/dev/null
+  pkill -f "$exe" 2>/dev/null
+
+  mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+  swiftc -O -parse-as-library "$src"/*.swift -o "$exe" || exit 1
+  cp -f "$src/Info.plist" "$APP_DIR/Contents/Info.plist"
+
+  # icon: drawn by tools/make-icon.swift, then packed with iconutil (both ship with macOS)
+  local tmp=$(mktemp -d)
+  if swiftc -O "${SELF:h}/tools/make-icon.swift" -o "$tmp/make-icon" 2>/dev/null && "$tmp/make-icon" "$tmp/AppIcon.iconset" \
+     && iconutil -c icns "$tmp/AppIcon.iconset" -o "$APP_DIR/Contents/Resources/AppIcon.icns"; then
+    :
+  else
+    print "icon generation failed (continuing without a custom icon)"
+  fi
+  rm -rf "$tmp"
+
+  codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || print "codesign failed (notifications may not work)"
+
+  # start at login; no KeepAlive so "Quit" actually quits
+  cat > "$APP_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$APP_LABEL</string>
+  <key>ProgramArguments</key><array><string>$exe</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+</dict></plist>
+EOF
+
+  # retire the earlier bare-binary menu bar agent
+  launchctl bootout gui/$(id -u) "$OLD_MB_PLIST" 2>/dev/null
+  rm -f "$OLD_MB_PLIST" "$HOME/.local/bin/update-or-stfu-menubar"
+
+  launchctl bootstrap gui/$(id -u) "$APP_PLIST" && print "installed $APP_DIR (starts at login)"
+}
+
+cmd_uninstall() {
+  retire_legacy
+  launchctl bootout gui/$(id -u) "$APP_PLIST" 2>/dev/null
+  launchctl bootout gui/$(id -u) "$OLD_MB_PLIST" 2>/dev/null
+  launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null
+  rm -rf "$APP_DIR"
+  rm -f "$APP_PLIST" "$OLD_MB_PLIST" "$PLIST" "$BIN"
+  print "removed agents, app and $BIN (config and state left in $CONF_DIR and $STATE_DIR)"
+}
+
+case ${1:-} in
+  run)             shift; cmd_run "$@" ;;
+  install)         cmd_install ;;
+  app-install|menubar-install) cmd_app_install ;;
+  uninstall)       cmd_uninstall ;;
+  status)          cmd_status ;;
+  now)             shift; cmd_now "$@" ;;
+  clear)           shift; cmd_clear "$@" ;;
+  apply-config)    cmd_apply_config ;;
+  --version|-V)    print "update-or-stfu $VERSION_STR" ;;
+  *)               print "usage: ${0:t} {run [--dry-run]|install|app-install|uninstall|status|now KIND NAME|clear KIND NAME|apply-config}"; exit 2 ;;
+esac

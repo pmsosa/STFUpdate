@@ -1,0 +1,21 @@
+# Homebrew cask template for a tap (e.g. github.com/pmsosa/homebrew-tap, Casks/update-or-stfu.rb).
+# Fill in VERSION and SHA256 (shasum -a 256 dist/UpdateOrSTFU-VERSION.dmg) after each release.
+cask "update-or-stfu" do
+  version "VERSION"
+  sha256 "SHA256"
+
+  url "https://github.com/pmsosa/update-or-stfu/releases/download/v#{version}/UpdateOrSTFU-#{version}.dmg"
+  name "Update or STFU"
+  desc "Homebrew updates with a thaw period"
+  homepage "https://github.com/pmsosa/update-or-stfu"
+
+  depends_on macos: ">= :ventura"
+
+  app "Update or STFU.app"
+
+  zap trash: [
+    "~/.config/update-or-stfu",
+    "~/.local/state/update-or-stfu",
+    "~/.local/bin/update-or-stfu",
+  ]
+end
