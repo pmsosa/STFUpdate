@@ -1,3 +1,9 @@
 dist/
 .build/
+.env
+.env.*
+!.env.example
+*.p12
+*.pem
+*.provisionprofile
 .DS_Store
