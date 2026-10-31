@@ -60,7 +60,7 @@ struct StatusView: View {
                     } header: {
                         Text("Needs you")
                     } footer: {
-                        Text("These couldn't install unattended (usually they need your password). Terminal opens so you can enter it.")
+                        Text("Couldn't install unattended (usually needs your password). Install… opens Terminal.")
                     }
                 }
 

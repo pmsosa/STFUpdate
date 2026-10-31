@@ -5,7 +5,8 @@ import AppKit
 import Foundation
 
 enum Paths {
-    static let home = NSHomeDirectory()
+    /// UOS_HOME redirects every path (used by tools/screenshots.sh so demo data never touches real state).
+    static let home = ProcessInfo.processInfo.environment["UOS_HOME"] ?? NSHomeDirectory()
     static let stateDir = home + "/.local/state/update-or-stfu"
     static let seen = stateDir + "/seen.tsv"
     static let needsYou = stateDir + "/needs-you.tsv"
@@ -111,7 +112,8 @@ enum Shell {
     static func script(_ args: [String]) -> Int32 { run("/bin/zsh", [Paths.script] + args).status }
 
     static func agentLoaded() -> Bool {
-        run("/bin/launchctl", ["print", "\(Paths.domain)/\(Paths.label)"]).status == 0
+        if let demo = ProcessInfo.processInfo.environment["UOS_DEMO_AGENT_LOADED"] { return demo == "1" }
+        return run("/bin/launchctl", ["print", "\(Paths.domain)/\(Paths.label)"]).status == 0
     }
 }
 

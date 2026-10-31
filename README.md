@@ -1,10 +1,59 @@
+![Update or STFU](docs/banner.png)
+
 # Update or STFU
 
 Automatic Homebrew updates with a **thaw period**: a new version is installed only after Homebrew has
 offered it for a number of days (7 by default). If it was a bad or compromised release, there's a good
-chance it's been pulled or fixed before it ever reaches your machine.
+chance it has been pulled or fixed before it ever reaches your machine.
 
-It runs from launchd, lives in the menu bar, and tells you when something needs you.
+It runs from launchd, lives in the menu bar, and tells you when something needs you. Zero dependencies:
+a zsh script, launchd, and a small native SwiftUI app.
+
+## See it
+
+These windows are rendered from made-up demo data (`tools/screenshots.sh`), not from a real machine.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/images/status.png" alt="Status window: needs-you item, packages ready to install, and a list of packages with a progress bar toward the 7-day thaw" width="100%"><br>
+<sub>Status</sub>
+<h3>What's waiting, and for how long</h3>
+Packages that have thawed install on the next check. The rest show a progress bar toward the thaw period, closest to ready first. <i>Install now…</i> skips the wait for one package.
+</td>
+<td width="50%" valign="top">
+<img src="docs/images/status-dark.png" alt="The same status window in dark mode" width="100%"><br>
+<sub>Dark mode</sub>
+<h3>Native, follows the system</h3>
+A plain SwiftUI window. Anything that failed to install unattended (usually it needs your password) is pinned at the top, and one click opens Terminal to finish it.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/images/activity.png" alt="Activity window: a colour-coded log of thaw, upgrade and failure lines" width="100%"><br>
+<sub>Activity</sub>
+<h3>A readable log</h3>
+Every decision is logged: what was held, what was upgraded, what was skipped or deferred, and what failed. Filter to just the problems.
+</td>
+<td width="50%" valign="top">
+<img src="docs/images/settings.png" alt="Settings window: thaw days, check interval, toggles and exception lists" width="100%"><br>
+<sub>Settings</sub>
+<h3>Four knobs that matter</h3>
+Thaw days, how often to check, which packages install immediately (Docker by default), and which are never touched.
+</td>
+</tr>
+</table>
+
+```mermaid
+flowchart LR
+  L[launchd, every 6h] --> R[update-or-stfu run]
+  R -->|brew update, brew outdated| B[(Homebrew)]
+  R --> S[(seen.tsv: first time each version was seen)]
+  S -->|age >= THAW_DAYS| U[brew upgrade]
+  S -->|younger| H[hold, show as thawing]
+  U -->|fails| N[needs-you: finish in Terminal]
+  R --> A[menu bar app reads the state files]
+```
 
 ## Why a thaw period?
 
@@ -88,6 +137,7 @@ Uninstall removes the agents, app and script, and leaves the config and state.
 ```sh
 tests/run.sh      # thaw logic, against a fake brew and a throwaway $HOME
 ./build-dmg.sh    # universal app + DMG in dist/ (--sign for Developer ID + notarization)
+tools/screenshots.sh   # regenerate docs/images from demo data (never touches real state)
 ```
 
 The shell script is the source of truth; the app reads its state files and shells out to it.
