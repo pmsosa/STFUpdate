@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1 (unreleased)
+## 1.0.1 (2026-10-31)
 
 - Fix: upgrading from the pre-1.0 install (old `com.user.*` agents) left the app showing PAUSED, because
   first-run setup only ran when no config existed. The app now loads the scheduler under the current label
