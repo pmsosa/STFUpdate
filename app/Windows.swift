@@ -1,6 +1,7 @@
 // Native SwiftUI windows: Status (what's waiting), Activity (readable log), Settings (config).
 import AppKit
 import Combine
+import ServiceManagement
 import SwiftUI
 
 // MARK: - Window management
@@ -244,10 +245,31 @@ struct SettingsView: View {
     @State private var noThawText = ""
     @State private var skipText = ""
     @State private var loaded = false
+    @State private var loginStatus = SMAppService.mainApp.status
+
+    /// Applies immediately (it isn't part of the saved config). Only for the drag-to-Applications build;
+    /// `update-or-stfu app-install` starts the app from its own LaunchAgent.
+    private var launchAtLogin: Binding<Bool> {
+        Binding(get: { loginStatus == .enabled },
+                set: { on in
+                    do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
+                    catch { NSSound.beep() }
+                    loginStatus = SMAppService.mainApp.status
+                })
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                if Bootstrap.bundled != nil && !Bootstrap.installedByScript {
+                    Section("Startup") {
+                        Toggle("Open Update or STFU at login", isOn: launchAtLogin)
+                        if loginStatus == .requiresApproval {
+                            Text("Approve it in System Settings › General › Login Items.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Section("Thaw period") {
                     Stepper(value: $draft.thawDays, in: 0...30) {
                         HStack { Text("Wait before installing"); Spacer(); Text("\(draft.thawDays) day\(draft.thawDays == 1 ? "" : "s")").foregroundStyle(.secondary) }

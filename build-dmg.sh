@@ -2,9 +2,10 @@
 # Build "Update or STFU.app" and a drag-to-Applications DMG into dist/.
 #
 #   ./build-dmg.sh           universal app, ad-hoc signed (fine for local use; Gatekeeper warns elsewhere)
-#   ./build-dmg.sh --sign    Developer ID signed + notarized + stapled. Needs:
-#                              DEVELOPER_ID    e.g. "Developer ID Application: Your Name (TEAMID)"
+#   ./build-dmg.sh --sign    Developer ID signed + notarized + stapled. Needs one of:
+#                              APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   (same as the focus project)
 #                              NOTARY_PROFILE  a keychain profile from `xcrun notarytool store-credentials`
+#                            The signing identity is found in the keychain (override with DEVELOPER_ID).
 #   ./build-dmg.sh --release upload dist/*.dmg to a GitHub release for the current VERSION (needs gh)
 emulate -L zsh
 set -e
@@ -23,8 +24,20 @@ if [[ ${1:-} == --release ]]; then
 fi
 
 SIGN=0; [[ ${1:-} == --sign ]] && SIGN=1
+notary=()
 if (( SIGN )); then
-  : ${DEVELOPER_ID:?set DEVELOPER_ID} ${NOTARY_PROFILE:?set NOTARY_PROFILE}
+  if [[ -z ${DEVELOPER_ID:-} ]]; then
+    DEVELOPER_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application${APPLE_TEAM_ID:+.*$APPLE_TEAM_ID}" | head -1 | sed -E 's/^[^"]*"(.*)"[^"]*$/\1/')
+  fi
+  [[ -n $DEVELOPER_ID ]] || { print "no Developer ID Application identity found (set DEVELOPER_ID)"; exit 1 }
+  if [[ -n ${NOTARY_PROFILE:-} ]]; then
+    notary=(--keychain-profile "$NOTARY_PROFILE")
+  elif [[ -n ${APPLE_ID:-} && -n ${APPLE_APP_SPECIFIC_PASSWORD:-} && -n ${APPLE_TEAM_ID:-} ]]; then
+    notary=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
+  else
+    print "set NOTARY_PROFILE, or APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID"; exit 1
+  fi
+  print "signing as: $DEVELOPER_ID"
 fi
 
 # the script carries its own version string
@@ -60,7 +73,8 @@ hdiutil create -volname "$NAME" -srcfolder $stage -ov -format UDZO "$DMG" >/dev/
 
 if (( SIGN )); then
   codesign --force --sign "$DEVELOPER_ID" --timestamp "$DMG"
-  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun notarytool submit "$DMG" "${notary[@]}" --wait
   xcrun stapler staple "$DMG"
+  spctl --assess --type open --context context:primary-signature -v "$DMG"
 fi
 print "built $DMG"
