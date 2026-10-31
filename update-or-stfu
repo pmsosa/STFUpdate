@@ -33,7 +33,7 @@ APP_DIR="$HOME/Applications/Update or STFU.app"
 APP_PLIST="$HOME/Library/LaunchAgents/$APP_LABEL.plist"
 OLD_MB_PLIST="$HOME/Library/LaunchAgents/$LABEL.menubar.plist"
 LEGACY_LABEL="com.user.update-or-stfu"   # pre-1.0 placeholder label; retired on install/uninstall
-VERSION_STR="1.0.0"                      # kept in sync with the VERSION file by build-dmg.sh
+VERSION_STR="1.0.1"                      # kept in sync with the VERSION file by build-dmg.sh
 
 # ---- defaults (override in $CONF) -------------------------------------------
 THAW_DAYS=7                              # only install versions Homebrew has offered for >= this many days
