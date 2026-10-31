@@ -64,8 +64,8 @@ benefit of both.
 ## Install
 
 **Download:** grab the DMG from [Releases](../../releases), drag the app to Applications, open it, and
-click *Set Up*. Until the releases are notarized, macOS will warn that the app is from an unidentified
-developer: right-click the app, choose *Open*, then confirm.
+click *Set Up*. It is signed with a Developer ID and notarized by Apple, so it opens without warnings.
+Turn on *Open Update or STFU at login* in Settings if you want it running after a restart.
 
 **From source** (needs the Xcode Command Line Tools):
 
