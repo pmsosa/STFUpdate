@@ -104,5 +104,24 @@ check "needs-you emptied" no grep -q wget $NEEDS
 print -- "--version"
 check "prints a version" zsh -c "[[ \$(zsh $SCRIPT --version) == update-or-stfu\ * ]]"
 
+print "install migrates the pre-1.0 agent labels (launchctl is faked)"
+setup
+cat > $T/bin/launchctl <<'LC'
+#!/bin/zsh
+print -r -- "$*" >> $LCALLS
+[[ $1 == print ]] && exit 1
+exit 0
+LC
+chmod +x $T/bin/launchctl; export LCALLS=$T/launchctl.calls; : > $LCALLS
+LA=$HOME/Library/LaunchAgents; mkdir -p $LA
+for l in com.user.update-or-stfu com.user.update-or-stfu.app; do : > $LA/$l.plist; done
+zsh $SCRIPT install >/dev/null 2>&1
+check "legacy scheduler plist removed" no test -e $LA/com.user.update-or-stfu.plist
+check "legacy app plist removed" no test -e $LA/com.user.update-or-stfu.app.plist
+check "new scheduler plist written" test -f $LA/com.konukoii.update-or-stfu.plist
+check "new agent bootstrapped" grep -q 'bootstrap .*com.konukoii.update-or-stfu.plist' $LCALLS
+check "old agent booted out" grep -q 'bootout .*com.user.update-or-stfu.plist' $LCALLS
+check "existing config left alone" grep -q 'THAW_DAYS=7' $HOME/.config/update-or-stfu/config
+
 print "\n$pass passed, $fail failed"
 (( fail == 0 ))

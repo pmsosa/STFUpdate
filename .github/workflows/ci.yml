@@ -1,0 +1,19 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Script tests (fake brew, throwaway HOME)
+        run: tests/run.sh
+      - name: Build universal app and DMG (ad-hoc signed)
+        run: ./build-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: dist/*.dmg

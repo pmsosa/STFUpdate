@@ -16,7 +16,10 @@ enum Bootstrap {
         guard let src = bundled, !installedByScript else { return }
         let fm = FileManager.default
         let dst = Paths.script
-        let fresh = !fm.fileExists(atPath: Paths.conf)
+        let hasConfig = fm.fileExists(atPath: Paths.conf)
+        // No scheduler agent under the current label: first run, or an upgrade from the pre-1.0 labels.
+        let needsScheduler = !fm.fileExists(atPath: Paths.plist)
+        let fresh = !hasConfig && needsScheduler
 
         if fresh {
             let a = NSAlert()
@@ -38,8 +41,8 @@ enum Bootstrap {
             try? fm.copyItem(atPath: src, toPath: dst)
             try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dst)
         }
-        if fresh {
-            _ = Shell.script(["install"])
+        if needsScheduler {
+            _ = Shell.script(["install"])   // also retires the old com.user.* agents
             try? SMAppService.mainApp.register()   // start at login
         }
     }
