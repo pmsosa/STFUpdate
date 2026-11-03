@@ -1,4 +1,4 @@
-// Shared model for the Update or STFU app: paths, state files, config, shell helpers.
+// Shared model for the STFUpdate app: paths, state files, config, shell helpers.
 // Zero dependencies: Foundation/AppKit only. The shell script remains the source of truth;
 // this app reads its state files and shells out to it for every action.
 import AppKit
@@ -7,15 +7,15 @@ import Foundation
 enum Paths {
     /// UOS_HOME redirects every path (used by tools/screenshots.sh so demo data never touches real state).
     static let home = ProcessInfo.processInfo.environment["UOS_HOME"] ?? NSHomeDirectory()
-    static let stateDir = home + "/.local/state/update-or-stfu"
+    static let stateDir = home + "/.local/state/stfupdate"
     static let seen = stateDir + "/seen.tsv"
     static let needsYou = stateDir + "/needs-you.tsv"
     static let events = stateDir + "/events.tsv"
     static let masCount = stateDir + "/mas.count"
     static let log = stateDir + "/update.log"
-    static let conf = home + "/.config/update-or-stfu/config"
-    static let script = home + "/.local/bin/update-or-stfu"
-    static let label = "com.konukoii.update-or-stfu"
+    static let conf = home + "/.config/stfupdate/config"
+    static let script = home + "/.local/bin/stfupdate"
+    static let label = "com.konukoii.stfupdate"
     static let plist = home + "/Library/LaunchAgents/\(label).plist"
     static let domain = "gui/\(getuid())"
 }
@@ -70,7 +70,7 @@ struct Config: Equatable {
 
     func save() {
         let text = """
-        # update-or-stfu config (sourced by zsh; the app's Settings window rewrites this file)
+        # stfupdate config (sourced by zsh; the app's Settings window rewrites this file)
         THAW_DAYS=\(thawDays)
         CHECK_EVERY_HOURS=\(checkEveryHours)
         NO_THAW=(\(noThaw.joined(separator: " ")))

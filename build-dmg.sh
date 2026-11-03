@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Build "Update or STFU.app" and a drag-to-Applications DMG into dist/.
+# Build "STFUpdate.app" and a drag-to-Applications DMG into dist/.
 #
 #   ./build-dmg.sh           universal app, ad-hoc signed (fine for local use; Gatekeeper warns elsewhere)
 #   ./build-dmg.sh --sign    Developer ID signed + notarized + stapled. Needs one of:
@@ -11,11 +11,11 @@ emulate -L zsh
 set -e
 
 cd ${0:A:h}
-NAME="Update or STFU"
+NAME="STFUpdate"
 VERSION=$(tr -d '[:space:]' < VERSION)
 DIST=dist
 APP="$DIST/$NAME.app"
-DMG="$DIST/UpdateOrSTFU-$VERSION.dmg"
+DMG="$DIST/STFUpdate-$VERSION.dmg"
 
 if [[ ${1:-} == --release ]]; then
   [[ -f $DMG ]] || { print "build the DMG first (./build-dmg.sh --sign)"; exit 1 }
@@ -41,7 +41,7 @@ if (( SIGN )); then
 fi
 
 # the script carries its own version string
-grep -q "^VERSION_STR=\"$VERSION\"" update-or-stfu || { print "VERSION_STR in update-or-stfu does not match VERSION ($VERSION)"; exit 1 }
+grep -q "^VERSION_STR=\"$VERSION\"" stfupdate || { print "VERSION_STR in stfupdate does not match VERSION ($VERSION)"; exit 1 }
 
 rm -rf "$APP" "$DMG"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -50,11 +50,11 @@ tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
 for arch in arm64 x86_64; do
   swiftc -O -parse-as-library -target $arch-apple-macos13.0 app/*.swift -o $tmp/uos-$arch
 done
-lipo -create $tmp/uos-arm64 $tmp/uos-x86_64 -output "$APP/Contents/MacOS/UpdateOrSTFU"
+lipo -create $tmp/uos-arm64 $tmp/uos-x86_64 -output "$APP/Contents/MacOS/STFUpdate"
 
 cp app/Info.plist "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
-cp update-or-stfu "$APP/Contents/Resources/update-or-stfu"
+cp stfupdate "$APP/Contents/Resources/stfupdate"
 
 swiftc -O tools/make-icon.swift -o $tmp/make-icon
 $tmp/make-icon $tmp/AppIcon.iconset

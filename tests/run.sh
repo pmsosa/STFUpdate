@@ -5,13 +5,13 @@ emulate -L zsh
 setopt pipe_fail
 
 ROOT=${0:A:h:h}
-SCRIPT=$ROOT/update-or-stfu
+SCRIPT=$ROOT/stfupdate
 pass=0; fail=0
 
 # fresh sandbox per test: fake HOME, fake brew on PATH
 setup() {
   T=$(mktemp -d)
-  export HOME=$T/home; mkdir -p $HOME/.config/update-or-stfu $T/bin
+  export HOME=$T/home; mkdir -p $HOME/.config/stfupdate $T/bin
   export CALLS=$T/calls; : > $CALLS
   cat > $T/bin/brew <<'BREW'
 #!/bin/zsh
@@ -31,7 +31,7 @@ BREW
   export PATH=$T/bin:/usr/bin:/bin:/usr/sbin:/sbin
   unset FAKE_FAIL
   export FAKE_FORMULAE="" FAKE_CASKS=""
-  cat > $HOME/.config/update-or-stfu/config <<CONF
+  cat > $HOME/.config/stfupdate/config <<CONF
 THAW_DAYS=7
 NO_THAW=(docker)
 SKIP=()
@@ -40,8 +40,8 @@ GREEDY_CASKS=0
 USE_MAS=0
 NOTIFY=0
 CONF
-  SEEN=$HOME/.local/state/update-or-stfu/seen.tsv
-  NEEDS=$HOME/.local/state/update-or-stfu/needs-you.tsv
+  SEEN=$HOME/.local/state/stfupdate/seen.tsv
+  NEEDS=$HOME/.local/state/stfupdate/needs-you.tsv
   mkdir -p ${SEEN:h}
 }
 
@@ -78,7 +78,7 @@ setup; FAKE_FORMULAE="docker (1) < 2"; run
 check "docker upgraded at once" ran docker
 
 print "SKIP packages are never upgraded"
-setup; sed -i '' 's/^SKIP=.*/SKIP=(wget)/' $HOME/.config/update-or-stfu/config
+setup; sed -i '' 's/^SKIP=.*/SKIP=(wget)/' $HOME/.config/stfupdate/config
 FAKE_FORMULAE="wget (1.0) < 1.1"; seed wget 1.1 30; run
 check "wget skipped" no ran wget
 
@@ -102,7 +102,7 @@ zsh $SCRIPT clear formula wget >/dev/null 2>&1
 check "needs-you emptied" no grep -q wget $NEEDS
 
 print -- "--version"
-check "prints a version" zsh -c "[[ \$(zsh $SCRIPT --version) == update-or-stfu\ * ]]"
+check "prints a version" zsh -c "[[ \$(zsh $SCRIPT --version) == stfupdate\ * ]]"
 
 print "install migrates the pre-1.0 agent labels (launchctl is faked)"
 setup
@@ -118,10 +118,10 @@ for l in com.user.update-or-stfu com.user.update-or-stfu.app; do : > $LA/$l.plis
 zsh $SCRIPT install >/dev/null 2>&1
 check "legacy scheduler plist removed" no test -e $LA/com.user.update-or-stfu.plist
 check "legacy app plist removed" no test -e $LA/com.user.update-or-stfu.app.plist
-check "new scheduler plist written" test -f $LA/com.konukoii.update-or-stfu.plist
-check "new agent bootstrapped" grep -q 'bootstrap .*com.konukoii.update-or-stfu.plist' $LCALLS
+check "new scheduler plist written" test -f $LA/com.konukoii.stfupdate.plist
+check "new agent bootstrapped" grep -q 'bootstrap .*com.konukoii.stfupdate.plist' $LCALLS
 check "old agent booted out" grep -q 'bootout .*com.user.update-or-stfu.plist' $LCALLS
-check "existing config left alone" grep -q 'THAW_DAYS=7' $HOME/.config/update-or-stfu/config
+check "existing config left alone" grep -q 'THAW_DAYS=7' $HOME/.config/stfupdate/config
 
 print "\n$pass passed, $fail failed"
 (( fail == 0 ))

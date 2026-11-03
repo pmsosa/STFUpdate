@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         else if m.busy { symbol = "arrow.triangle.2.circlepath.circle.fill" }
         else if !m.needsYou.isEmpty { symbol = "exclamationmark.circle.fill" }
         else { symbol = "arrow.triangle.2.circlepath.circle" }
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Update or STFU")
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "STFUpdate")
         let count = m.needsYou.isEmpty ? m.pending.count : m.needsYou.count
         button.title = count > 0 ? " \(count)" : ""
     }
@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
         menu.removeAllItems()
 
-        info(menu, m.agentLoaded ? "Update or STFU · active · \(m.config.thawDays)d thaw" : "Update or STFU · PAUSED", bold: true)
+        info(menu, m.agentLoaded ? "STFUpdate · active · \(m.config.thawDays)d thaw" : "STFUpdate · PAUSED", bold: true)
         info(menu, m.busy ? m.busyLabel : m.lastRun)
         menu.addItem(.separator())
 
@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
-        action(menu, "Open Update or STFU…", #selector(openStatus), key: "o", symbol: "list.bullet.rectangle")
+        action(menu, "Open STFUpdate…", #selector(openStatus), key: "o", symbol: "list.bullet.rectangle")
         let check = action(menu, "Check now", #selector(checkNow), key: "r", symbol: "arrow.clockwise")
         check.isEnabled = !m.busy
         action(menu, m.agentLoaded ? "Pause scheduled checks" : "Resume scheduled checks", #selector(toggleAgent),

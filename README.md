@@ -1,6 +1,11 @@
-![Update or STFU](docs/banner.png)
+![STFUpdate](docs/banner.png)
 
-# Update or STFU
+# STFUpdate
+
+[![ci](https://badgen.net/github/checks/pmsosa/update-or-stfu?label=ci)](https://github.com/pmsosa/update-or-stfu/actions)
+[![release](https://badgen.net/github/release/pmsosa/update-or-stfu)](https://github.com/pmsosa/update-or-stfu/releases)
+[![license](https://badgen.net/github/license/pmsosa/update-or-stfu)](LICENSE)
+[![platform](https://badgen.net/badge/platform/macOS/blue)](#install)
 
 Automatic Homebrew updates with a **thaw period**: a new version is installed only after Homebrew has
 offered it for a number of days (7 by default). If it was a bad or compromised release, there's a good
@@ -46,7 +51,7 @@ Thaw days, how often to check, which packages install immediately (Docker by def
 
 ```mermaid
 flowchart LR
-  L[launchd, every 6h] --> R[update-or-stfu run]
+  L[launchd, every 6h] --> R[stfupdate run]
   R -->|brew update, brew outdated| B[(Homebrew)]
   R --> S[(seen.tsv: first time each version was seen)]
   S -->|age >= THAW_DAYS| U[brew upgrade]
@@ -65,14 +70,14 @@ benefit of both.
 
 **Download:** grab the DMG from [Releases](../../releases), drag the app to Applications, open it, and
 click *Set Up*. It is signed with a Developer ID and notarized by Apple, so it opens without warnings.
-Turn on *Open Update or STFU at login* in Settings if you want it running after a restart.
+Turn on *Open STFUpdate at login* in Settings if you want it running after a restart.
 
 **From source** (needs the Xcode Command Line Tools):
 
 ```sh
 git clone https://github.com/pmsosa/update-or-stfu && cd update-or-stfu
-./update-or-stfu install       # scheduler only, no app
-./update-or-stfu app-install   # scheduler + menu bar app
+./stfupdate install       # scheduler only, no app
+./stfupdate app-install   # scheduler + menu bar app
 ```
 
 Requires macOS 13+ and [Homebrew](https://brew.sh).
@@ -96,7 +101,7 @@ self-update (`--greedy`). Turn that off with `GREEDY_CASKS=0`.
 
 ## Configuration
 
-Settings are in the app (Settings…) or in `~/.config/update-or-stfu/config`:
+Settings are in the app (Settings…) or in `~/.config/stfupdate/config`:
 
 ```sh
 THAW_DAYS=7
@@ -112,23 +117,23 @@ NOTIFY=1
 ## Command line
 
 ```
-update-or-stfu run [--dry-run]   check and upgrade now
-update-or-stfu status            pending updates and their age
-update-or-stfu now KIND NAME     upgrade one package immediately (kind: formula | cask)
-update-or-stfu clear KIND NAME   forget a pending entry
-update-or-stfu uninstall         remove agents, app and installed script
+stfupdate run [--dry-run]   check and upgrade now
+stfupdate status            pending updates and their age
+stfupdate now KIND NAME     upgrade one package immediately (kind: formula | cask)
+stfupdate clear KIND NAME   forget a pending entry
+stfupdate uninstall         remove agents, app and installed script
 ```
 
-Try `update-or-stfu run --dry-run` first to see what it would do.
+Try `stfupdate run --dry-run` first to see what it would do.
 
 ## Files
 
 | Path | What |
 | --- | --- |
-| `~/.local/bin/update-or-stfu` | installed copy of the script |
-| `~/.config/update-or-stfu/config` | settings |
-| `~/.local/state/update-or-stfu/` | seen versions, needs-you list, log |
-| `~/Library/LaunchAgents/com.konukoii.update-or-stfu*.plist` | scheduler and app login agents |
+| `~/.local/bin/stfupdate` | installed copy of the script |
+| `~/.config/stfupdate/config` | settings |
+| `~/.local/state/stfupdate/` | seen versions, needs-you list, log |
+| `~/Library/LaunchAgents/com.konukoii.stfupdate*.plist` | scheduler and app login agents |
 
 Uninstall removes the agents, app and script, and leaves the config and state.
 

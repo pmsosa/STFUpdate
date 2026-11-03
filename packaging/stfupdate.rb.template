@@ -1,0 +1,21 @@
+# Homebrew cask template for a tap (e.g. github.com/pmsosa/homebrew-tap, Casks/stfupdate.rb).
+# Fill in VERSION and SHA256 (shasum -a 256 dist/STFUpdate-VERSION.dmg) after each release.
+cask "stfupdate" do
+  version "VERSION"
+  sha256 "SHA256"
+
+  url "https://github.com/pmsosa/stfupdate/releases/download/v#{version}/STFUpdate-#{version}.dmg"
+  name "STFUpdate"
+  desc "Homebrew updates with a thaw period"
+  homepage "https://github.com/pmsosa/stfupdate"
+
+  depends_on macos: ">= :ventura"
+
+  app "STFUpdate.app"
+
+  zap trash: [
+    "~/.config/stfupdate",
+    "~/.local/state/stfupdate",
+    "~/.local/bin/stfupdate",
+  ]
+end

@@ -1,39 +1,39 @@
 #!/bin/zsh
-# update-or-stfu: scheduled Homebrew updates with a thaw period.
+# stfupdate: scheduled Homebrew updates with a thaw period.
 # Zero dependencies: zsh, awk, launchd and the Xcode Command Line Tools (for the app) only.
 #
-#   update-or-stfu run [--dry-run]   check and upgrade now
-#   update-or-stfu install           copy to ~/.local/bin and load the scheduler LaunchAgent
-#   update-or-stfu app-install       build "Update or STFU.app" (menu bar app) into ~/Applications
-#   update-or-stfu uninstall         remove both agents, the app and the installed script
-#   update-or-stfu status            show tracked pending updates and their age
-#   update-or-stfu now KIND NAME     upgrade one package immediately, ignoring the thaw
-#   update-or-stfu clear KIND NAME   forget a pending/needs-you entry (after a manual upgrade)
-#   update-or-stfu apply-config      rewrite the scheduler plist from the config and reload it
-#   update-or-stfu --version         print the version
+#   stfupdate run [--dry-run]   check and upgrade now
+#   stfupdate install           copy to ~/.local/bin and load the scheduler LaunchAgent
+#   stfupdate app-install       build "STFUpdate.app" (menu bar app) into ~/Applications
+#   stfupdate uninstall         remove both agents, the app and the installed script
+#   stfupdate status            show tracked pending updates and their age
+#   stfupdate now KIND NAME     upgrade one package immediately, ignoring the thaw
+#   stfupdate clear KIND NAME   forget a pending/needs-you entry (after a manual upgrade)
+#   stfupdate apply-config      rewrite the scheduler plist from the config and reload it
+#   stfupdate --version         print the version
 
 emulate -L zsh
 setopt pipe_fail
 
 SELF=${0:A}
-LABEL="com.konukoii.update-or-stfu"
+LABEL="com.konukoii.stfupdate"
 APP_LABEL="$LABEL.app"
-CONF_DIR="$HOME/.config/update-or-stfu"
+CONF_DIR="$HOME/.config/stfupdate"
 CONF="$CONF_DIR/config"
-STATE_DIR="$HOME/.local/state/update-or-stfu"
+STATE_DIR="$HOME/.local/state/stfupdate"
 STATE="$STATE_DIR/seen.tsv"          # kind <tab> name <tab> version <tab> first_seen_epoch
 NEEDS_YOU="$STATE_DIR/needs-you.tsv" # same columns; upgrades that failed (usually need sudo) and wait for you
 EVENTS="$STATE_DIR/events.tsv"       # epoch <tab> type <tab> title <tab> body (the app turns these into notifications)
 MAS_COUNT="$STATE_DIR/mas.count"
 LOG="$STATE_DIR/update.log"
 LOCK="$STATE_DIR/lock.d"
-BIN="$HOME/.local/bin/update-or-stfu"
+BIN="$HOME/.local/bin/stfupdate"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-APP_DIR="$HOME/Applications/Update or STFU.app"
+APP_DIR="$HOME/Applications/STFUpdate.app"
 APP_PLIST="$HOME/Library/LaunchAgents/$APP_LABEL.plist"
 OLD_MB_PLIST="$HOME/Library/LaunchAgents/$LABEL.menubar.plist"
 LEGACY_LABEL="com.user.update-or-stfu"   # pre-1.0 placeholder label; retired on install/uninstall
-VERSION_STR="1.0.1"                      # kept in sync with the VERSION file by build-dmg.sh
+VERSION_STR="1.0.2"                      # kept in sync with the VERSION file by build-dmg.sh
 
 # ---- defaults (override in $CONF) -------------------------------------------
 THAW_DAYS=7                              # only install versions Homebrew has offered for >= this many days
@@ -267,7 +267,7 @@ cmd_install() {
 
   if [[ ! -f $CONF ]]; then
     cat > "$CONF" <<EOF
-# update-or-stfu config (sourced by zsh; the app's Settings window rewrites this file)
+# stfupdate config (sourced by zsh; the app's Settings window rewrites this file)
 THAW_DAYS=$THAW_DAYS
 CHECK_EVERY_HOURS=$CHECK_EVERY_HOURS
 NO_THAW=(docker docker-desktop)
@@ -288,7 +288,7 @@ EOF
 # ---- the app ------------------------------------------------------------------
 cmd_app_install() {
   command -v swiftc >/dev/null || { print "swiftc not found (install Xcode Command Line Tools)"; exit 1 }
-  local src="${SELF:h}/app" exe="$APP_DIR/Contents/MacOS/UpdateOrSTFU"
+  local src="${SELF:h}/app" exe="$APP_DIR/Contents/MacOS/STFUpdate"
   [[ -d $src ]] || { print "missing $src"; exit 1 }
 
   # keep the installed script in sync with this checkout (the app shells out to it)
@@ -329,7 +329,7 @@ EOF
 
   # retire the earlier bare-binary menu bar agent
   launchctl bootout gui/$(id -u) "$OLD_MB_PLIST" 2>/dev/null
-  rm -f "$OLD_MB_PLIST" "$HOME/.local/bin/update-or-stfu-menubar"
+  rm -f "$OLD_MB_PLIST" "$HOME/.local/bin/stfupdate-menubar"
 
   launchctl bootstrap gui/$(id -u) "$APP_PLIST" && print "installed $APP_DIR (starts at login)"
 }
@@ -353,6 +353,6 @@ case ${1:-} in
   now)             shift; cmd_now "$@" ;;
   clear)           shift; cmd_clear "$@" ;;
   apply-config)    cmd_apply_config ;;
-  --version|-V)    print "update-or-stfu $VERSION_STR" ;;
+  --version|-V)    print "stfupdate $VERSION_STR" ;;
   *)               print "usage: ${0:t} {run [--dry-run]|install|app-install|uninstall|status|now KIND NAME|clear KIND NAME|apply-config}"; exit 2 ;;
 esac

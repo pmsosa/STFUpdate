@@ -92,7 +92,7 @@ func render<V: View>(_ name: String, title: String, size: NSSize, dark: Bool, @V
     print("wrote \(url.path) \(rep.pixelsWide)x\(rep.pixelsHigh)")
 }
 
-render("status", title: "Update or STFU", size: NSSize(width: 560, height: 640), dark: false) { StatusView() }
-render("status-dark", title: "Update or STFU", size: NSSize(width: 560, height: 640), dark: true) { StatusView() }
+render("status", title: "STFUpdate", size: NSSize(width: 560, height: 640), dark: false) { StatusView() }
+render("status-dark", title: "STFUpdate", size: NSSize(width: 560, height: 640), dark: true) { StatusView() }
 render("activity", title: "Activity", size: NSSize(width: 760, height: 520), dark: true) { ActivityView() }
 render("settings", title: "Settings", size: NSSize(width: 480, height: 560), dark: false) { SettingsView() }

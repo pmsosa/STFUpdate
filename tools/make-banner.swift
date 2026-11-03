@@ -17,7 +17,7 @@ func text(_ s: String, size: CGFloat, weight: NSFont.Weight, alpha: CGFloat, y: 
                                                .foregroundColor: NSColor.white.withAlphaComponent(alpha)])
         .draw(at: NSPoint(x: 430, y: y))
 }
-text("Update or STFU", size: 120, weight: .bold, alpha: 1, y: 235)
+text("STFUpdate", size: 120, weight: .bold, alpha: 1, y: 235)
 text("Homebrew updates that wait a week before they land.", size: 44, weight: .regular, alpha: 0.88, y: 170)
 NSGraphicsContext.restoreGraphicsState()
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[1]))

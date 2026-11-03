@@ -27,7 +27,7 @@ final class Windows {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func status() { show("status", title: "Update or STFU", size: NSSize(width: 560, height: 640)) { StatusView() } }
+    func status() { show("status", title: "STFUpdate", size: NSSize(width: 560, height: 640)) { StatusView() } }
     func activity() { show("activity", title: "Activity", size: NSSize(width: 760, height: 520)) { ActivityView() } }
     func settings() { show("settings", title: "Settings", size: NSSize(width: 480, height: 560)) { SettingsView() } }
 }
@@ -248,7 +248,7 @@ struct SettingsView: View {
     @State private var loginStatus = SMAppService.mainApp.status
 
     /// Applies immediately (it isn't part of the saved config). Only for the drag-to-Applications build;
-    /// `update-or-stfu app-install` starts the app from its own LaunchAgent.
+    /// `stfupdate app-install` starts the app from its own LaunchAgent.
     private var launchAtLogin: Binding<Bool> {
         Binding(get: { loginStatus == .enabled },
                 set: { on in
@@ -263,7 +263,7 @@ struct SettingsView: View {
             Form {
                 if Bootstrap.bundled != nil && !Bootstrap.installedByScript {
                     Section("Startup") {
-                        Toggle("Open Update or STFU at login", isOn: launchAtLogin)
+                        Toggle("Open STFUpdate at login", isOn: launchAtLogin)
                         if loginStatus == .requiresApproval {
                             Text("Approve it in System Settings › General › Login Items.")
                                 .font(.caption).foregroundStyle(.secondary)
