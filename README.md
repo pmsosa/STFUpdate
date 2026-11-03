@@ -2,9 +2,9 @@
 
 # STFUpdate
 
-[![ci](https://badgen.net/github/checks/pmsosa/update-or-stfu?label=ci)](https://github.com/pmsosa/update-or-stfu/actions)
-[![release](https://badgen.net/github/release/pmsosa/update-or-stfu)](https://github.com/pmsosa/update-or-stfu/releases)
-[![license](https://badgen.net/github/license/pmsosa/update-or-stfu)](LICENSE)
+[![ci](https://badgen.net/github/checks/pmsosa/STFUpdate?label=ci)](https://github.com/pmsosa/STFUpdate/actions)
+[![release](https://badgen.net/github/release/pmsosa/STFUpdate)](https://github.com/pmsosa/STFUpdate/releases)
+[![license](https://badgen.net/github/license/pmsosa/STFUpdate)](LICENSE)
 [![platform](https://badgen.net/badge/platform/macOS/blue)](#install)
 
 Automatic Homebrew updates with a **thaw period**: a new version is installed only after Homebrew has
@@ -75,7 +75,7 @@ Turn on *Open STFUpdate at login* in Settings if you want it running after a res
 **From source** (needs the Xcode Command Line Tools):
 
 ```sh
-git clone https://github.com/pmsosa/update-or-stfu && cd update-or-stfu
+git clone https://github.com/pmsosa/STFUpdate && cd STFUpdate
 ./stfupdate install       # scheduler only, no app
 ./stfupdate app-install   # scheduler + menu bar app
 ```
